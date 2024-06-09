@@ -364,3 +364,78 @@ void TextEditor::handleCommand(int command) {
     }
 }
 
+void TextEditor::appendText(const char* newText) {
+    textStorage->appendText(newText);
+}
+
+void TextEditor::newLine() {
+    textStorage->newLine();
+}
+
+void TextEditor::saveToFile(const char* filename) {
+    textStorage->saveToFile(filename);
+}
+
+void TextEditor::loadFromFile(const char* filename) {
+    textStorage->loadFromFile(filename);
+}
+
+void TextEditor::printText() {
+    textStorage->printText();
+}
+
+void TextEditor::insertText(int line, int index, const char* str) {
+    Command* command = new InsertCommand(textStorage, line, index, str);
+    command->execute();
+    undoStack.push(command);
+    while (!redoStack.empty()) {
+        delete redoStack.top();
+        redoStack.pop();
+    }
+}
+
+void TextEditor::deleteText(int line, int index, int length) {
+    Command* command = new DeleteCommand(textStorage, line, index, length);
+    command->execute();
+    undoStack.push(command);
+    while (!redoStack.empty()) {
+        delete redoStack.top();
+        redoStack.pop();
+    }
+}
+
+void TextEditor::undo() {
+    if (!undoStack.empty()) {
+        Command* command = undoStack.top();
+        command->undo();
+        undoStack.pop();
+        redoStack.push(command);
+    }
+}
+
+void TextEditor::redo() {
+    if (!redoStack.empty()) {
+        Command* command = redoStack.top();
+        command->execute();
+        redoStack.pop();
+        undoStack.push(command);
+    }
+}
+
+void TextEditor::searchText(const char* str) {
+    textStorage->searchText(str);
+}
+
+void TextEditor::clearConsole() {
+    textStorage->clearConsole();
+}
+
+void TextEditor::freeTextStorage() {
+    textStorage->freeTextStorage();
+}
+
+int main() {
+    TextEditor editor;
+    editor.run();
+    return 0;
+}
