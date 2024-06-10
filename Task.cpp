@@ -59,7 +59,7 @@ void TextStorage::appendText(const char* newText) {
 void TextStorage::newLine() {
     ensureCapacity();
     text[totalLines][0] = '\0';
-    totalLines+1;
+    totalLines + 1;
 }
 
 void TextStorage::saveToFile(const char* filename) {
@@ -244,6 +244,138 @@ void DeleteCommand::undo() {
     }
 }
 
+class CutCommand : public Command {
+public:
+    CutCommand(TextStorage* storage, int line, int index, int length, std::string* clipboard);
+    void execute() override;
+    void undo() override;
+
+private:
+    TextStorage* storage;
+    int line;
+    int index;
+    int length;
+    char* cutText;
+    std::string* clipboard;
+};
+
+CutCommand::CutCommand(TextStorage* storage, int line, int index, int length, std::string* clipboard)
+        : storage(storage), line(line), index(index), length(length), clipboard(clipboard) {
+    cutText = nullptr;
+}
+
+void CutCommand::execute() {
+    char* lineText = storage->getText(line);
+    if (lineText) {
+        cutText = (char*)malloc((length + 1) * sizeof(char));
+        strncpy(cutText, &lineText[index], length);
+        cutText[length] = '\0';
+        *clipboard = cutText;
+        storage->deleteText(line, index, length);
+    }
+}
+
+void CutCommand::undo() {
+    if (cutText) {
+        storage->insertText(line, index, cutText);
+        free(cutText);
+    }
+}
+
+class CopyCommand : public Command {
+public:
+    CopyCommand(TextStorage* storage, int line, int index, int length, std::string* clipboard);
+    void execute() override;
+    void undo() override {}
+
+private:
+    TextStorage* storage;
+    int line;
+    int index;
+    int length;
+    std::string* clipboard;
+};
+
+CopyCommand::CopyCommand(TextStorage* storage, int line, int index, int length, std::string* clipboard)
+        : storage(storage), line(line), index(index), length(length), clipboard(clipboard) {}
+
+void CopyCommand::execute() {
+    char* lineText = storage->getText(line);
+    if (lineText) {
+        char* copiedText = (char*)malloc((length + 1) * sizeof(char));
+        strncpy(copiedText, &lineText[index], length);
+        copiedText[length] = '\0';
+        *clipboard = copiedText;
+        free(copiedText);
+    }
+}
+
+class PasteCommand : public Command {
+public:
+    PasteCommand(TextStorage* storage, int line, int index, std::string* clipboard);
+    void execute() override;
+    void undo() override;
+
+private:
+    TextStorage* storage;
+    int line;
+    int index;
+    std::string* clipboard;
+    char* pastedText;
+};
+
+PasteCommand::PasteCommand(TextStorage* storage, int line, int index, std::string* clipboard)
+        : storage(storage), line(line), index(index), clipboard(clipboard) {
+    pastedText = nullptr;
+}
+
+void PasteCommand::execute() {
+    if (!clipboard->empty()) {
+        pastedText = (char*)malloc((clipboard->size() + 1) * sizeof(char));
+        strcpy(pastedText, clipboard->c_str());
+        storage->insertText(line, index, pastedText);
+    }
+}
+
+void PasteCommand::undo() {
+    if (pastedText) {
+        storage->deleteText(line, index, strlen(pastedText));
+        free(pastedText);
+    }
+}
+
+class InsertReplaceCommand : public Command {
+public:
+    InsertReplaceCommand(TextStorage* storage, int line, int index, const char* str);
+    void execute() override;
+    void undo() override;
+
+private:
+    TextStorage* storage;
+    int line;
+    int index;
+    char* newText;
+    char* oldText;
+};
+
+InsertReplaceCommand::InsertReplaceCommand(TextStorage* storage, int line, int index, const char* str)
+        : storage(storage), line(line), index(index) {
+    newText = (char*)malloc((strlen(str) + 1) * sizeof(char));
+    strcpy(newText, str);
+    oldText = (char*)malloc((strlen(storage->getText(line)) + 1) * sizeof(char));
+    strcpy(oldText, storage->getText(line));
+}
+
+void InsertReplaceCommand::execute() {
+    storage->insertText(line, index, newText);
+}
+
+void InsertReplaceCommand::undo() {
+    strcpy(storage->getText(line), oldText);
+    free(newText);
+    free(oldText);
+}
+
 class TextEditor {
 public:
     TextEditor();
@@ -254,6 +386,7 @@ private:
     TextStorage* textStorage;
     std::stack<Command*> undoStack;
     std::stack<Command*> redoStack;
+    std::string clipboard;
 
     void handleCommand(int command);
     void appendText(const char* newText);
@@ -268,6 +401,10 @@ private:
     void freeTextStorage();
     void undo();
     void redo();
+    void cutText(int line, int index, int length);
+    void copyText(int line, int index, int length);
+    void pasteText(int line, int index);
+    void insertReplaceText(int line, int index, const char* str);
 };
 
 TextEditor::TextEditor() {
@@ -293,7 +430,7 @@ void TextEditor::run() {
     char filename[144];
 
     while (true) {
-        std::cout << "\nChoose the command from 1 to 11:\n ";
+        std::cout << "\nChoose the command from 1 to 14:\n ";
         std::cin >> user_input;
         std::cin.ignore();
         handleCommand(user_input);
@@ -341,22 +478,48 @@ void TextEditor::handleCommand(int command) {
             searchText(inputBuffer);
             break;
         case 8:
-            clearConsole();
-            break;
-        case 9:
-            freeTextStorage();
-            exit(0);
-        case 10:
-            undo();
-            break;
-        case 11:
-            redo();
-            break;
-        case 12:
             std::cout << "8. Choose line, index and number of symbols:\n ";
             std::cin >> line >> index >> length;
             std::cin.ignore();
             deleteText(line, index, length);
+            break;
+        case 9:
+            undo();
+            break;
+        case 10:
+            redo();
+            break;
+        case 11:
+            std::cout << "11. Cut: Choose line, index and number of symbols:\n ";
+            std::cin >> line >> index >> length;
+            std::cin.ignore();
+            cutText(line, index, length);
+            break;
+        case 12:
+            std::cout << "12. Paste: Choose line and index:\n ";
+            std::cin >> line >> index;
+            std::cin.ignore();
+            pasteText(line, index);
+            break;
+        case 13:
+            std::cout << "13. Copy: Choose line, index and number of symbols:\n ";
+            std::cin >> line >> index >> length;
+            std::cin.ignore();
+            copyText(line, index, length);
+            break;
+        case 14:
+            std::cout << "14. Insert with replacement: Choose line and index:\n ";
+            std::cin >> line >> index;
+            std::cin.ignore();
+            std::cout << "Write text: ";
+            std::cin.getline(inputBuffer, BUFFER_SIZE);
+            insertReplaceText(line, index, inputBuffer);
+            break;
+        case 15:
+            clearConsole();
+            break;
+        case 16:
+            freeTextStorage();
             break;
         default:
             std::cout << "Invalid command.\n";
@@ -419,6 +582,41 @@ void TextEditor::redo() {
         command->execute();
         redoStack.pop();
         undoStack.push(command);
+    }
+}
+
+void TextEditor::cutText(int line, int index, int length) {
+    Command* command = new CutCommand(textStorage, line, index, length, &clipboard);
+    command->execute();
+    undoStack.push(command);
+    while (!redoStack.empty()) {
+        delete redoStack.top();
+        redoStack.pop();
+    }
+}
+
+void TextEditor::copyText(int line, int index, int length) {
+    Command* command = new CopyCommand(textStorage, line, index, length, &clipboard);
+    command->execute();
+}
+
+void TextEditor::pasteText(int line, int index) {
+    Command* command = new PasteCommand(textStorage, line, index, &clipboard);
+    command->execute();
+    undoStack.push(command);
+    while (!redoStack.empty()) {
+        delete redoStack.top();
+        redoStack.pop();
+    }
+}
+
+void TextEditor::insertReplaceText(int line, int index, const char* str) {
+    Command* command = new InsertReplaceCommand(textStorage, line, index, str);
+    command->execute();
+    undoStack.push(command);
+    while (!redoStack.empty()) {
+        delete redoStack.top();
+        redoStack.pop();
     }
 }
 
