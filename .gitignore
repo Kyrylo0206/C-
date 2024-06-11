@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+/cmake-build-debug/CMakeFiles
+/cmake-build-debug
+/.idea
+/.idea
+/.idea
+.idea/vcs.xml
